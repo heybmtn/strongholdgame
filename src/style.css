@@ -1,0 +1,105 @@
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  background: #111;
+}
+
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: default;
+}
+
+#hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+#resource-panel {
+  pointer-events: auto;
+  align-self: flex-start;
+  margin: 12px;
+  display: flex;
+  gap: 16px;
+  background: rgba(20, 20, 24, 0.85);
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 16px;
+  color: #eee;
+}
+
+.resource {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.resource .icon {
+  font-size: 16px;
+}
+
+#build-panel {
+  pointer-events: auto;
+  align-self: center;
+  margin-bottom: 12px;
+  display: flex;
+  gap: 8px;
+  background: rgba(20, 20, 24, 0.85);
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.build-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 96px;
+  background: #2a2a30;
+  color: #eee;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.build-button:hover:not(:disabled) {
+  background: #3a3a42;
+  border-color: #777;
+}
+
+.build-button.selected {
+  border-color: #8fd18f;
+  background: #2f3f2f;
+}
+
+.build-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.build-button .cost {
+  font-size: 11px;
+  color: #aaa;
+}
