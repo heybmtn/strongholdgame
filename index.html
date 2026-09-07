@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stronghold Prototype</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas"></canvas>
+      <div id="hud">
+        <div id="resource-panel">
+          <span class="resource"><span class="icon">🪵</span><span id="wood-count">0</span></span>
+          <span class="resource"><span class="icon">🪨</span><span id="stone-count">0</span></span>
+          <span class="resource"><span class="icon">👥</span><span id="population-count">0/0</span></span>
+        </div>
+        <div id="build-panel"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
