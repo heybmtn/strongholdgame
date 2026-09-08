@@ -13,9 +13,10 @@ import { Input } from './Input';
 import { GameLoop } from './GameLoop';
 import { createUIState } from './UIState';
 import type { UIState } from './UIState';
-import { tick as simulationTick } from '../simulation/Simulation';
+import { tick as simulationTick, MAX_POPULATION, SAPLING_GROW_SECONDS } from '../simulation/Simulation';
 import { Renderer } from '../rendering/Renderer';
 import { HUD } from '../ui/HUD';
+import { applySaveToWorld, loadSave, saveGame } from '../persistence/SaveGame';
 
 const STARTING_VILLAGERS = 3;
 
@@ -43,7 +44,12 @@ export class Game {
       onClickWorld: (world) => this.handleClick(world),
       onCancel: () => this.cancelPlacement(),
     });
-    this.hud = new HUD(this.uiState, (type) => this.selectBuildingToPlace(type));
+    this.hud = new HUD(this.uiState, {
+      onSelectBuilding: (type) => this.selectBuildingToPlace(type),
+      onTogglePlantTree: () => this.togglePlantTree(),
+      onSave: () => this.save(),
+      onLoad: () => this.load(),
+    });
     this.loop = new GameLoop(
       (dt) => this.update(dt),
       () => this.render(),
@@ -79,7 +85,7 @@ export class Game {
         x: worldCenter.x + Math.cos(angle) * 40,
         y: worldCenter.y + Math.sin(angle) * 40,
       };
-      this.world.villagers.push(createVillager(spawnPoint));
+      this.world.villagers.push(createVillager(spawnPoint, 'adult'));
     }
   }
 
@@ -91,10 +97,16 @@ export class Game {
   private update(dt: number) {
     this.input.tick(dt);
     simulationTick(dt, this.world);
-    const populationCap = this.world.buildings
-      .filter((b) => b.state === 'active')
-      .reduce((sum, b) => sum + (BUILDING_DEFS[b.type].populationCap ?? 0), 0);
-    this.hud.refresh(this.world.resources, this.world.villagers.length, populationCap);
+
+    const activeBuildings = this.world.buildings.filter((b) => b.state === 'active');
+    const populationCap = Math.min(
+      activeBuildings.reduce((sum, b) => sum + (BUILDING_DEFS[b.type].populationCap ?? 0), 0),
+      MAX_POPULATION,
+    );
+    const foodCapacity = activeBuildings.reduce((sum, b) => sum + (BUILDING_DEFS[b.type].foodCapacity ?? 0), 0);
+    const kidsCount = this.world.villagers.filter((v) => v.ageGroup === 'kid').length;
+
+    this.hud.refresh(this.world.resources, this.world.villagers.length, populationCap, kidsCount, foodCapacity);
   }
 
   private render() {
@@ -102,17 +114,26 @@ export class Game {
   }
 
   private selectBuildingToPlace(type: BuildingType) {
+    this.uiState.plantingTree = false;
     this.uiState.placingBuildingType = this.uiState.placingBuildingType === type ? null : type;
+  }
+
+  private togglePlantTree() {
+    this.uiState.placingBuildingType = null;
+    this.uiState.plantingTree = !this.uiState.plantingTree;
   }
 
   private cancelPlacement() {
     this.uiState.placingBuildingType = null;
+    this.uiState.plantingTree = false;
   }
 
   private handleHover(worldPoint: Point) {
     const tile = worldToTile(worldPoint.x, worldPoint.y);
     this.uiState.hoverTile = tile;
-    this.uiState.ghostValid = this.isPlacementValid(tile);
+    this.uiState.ghostValid = this.uiState.plantingTree
+      ? this.world.map.isPlantable(tile.x, tile.y)
+      : this.isPlacementValid(tile);
   }
 
   private isPlacementValid(tile: Point): boolean {
@@ -125,9 +146,15 @@ export class Game {
   }
 
   private handleClick(worldPoint: Point) {
+    const tile = worldToTile(worldPoint.x, worldPoint.y);
+
+    if (this.uiState.plantingTree) {
+      this.world.map.plantTree(tile.x, tile.y, SAPLING_GROW_SECONDS);
+      return;
+    }
+
     const type = this.uiState.placingBuildingType;
     if (!type) return;
-    const tile = worldToTile(worldPoint.x, worldPoint.y);
     if (!this.isPlacementValid(tile)) return;
 
     const def = BUILDING_DEFS[type];
@@ -140,5 +167,16 @@ export class Game {
     this.world.map.occupyArea(tile.x, tile.y, def.footprint.w, def.footprint.h, building.id);
     this.world.buildings.push(building);
     this.uiState.placingBuildingType = null;
+  }
+
+  private save() {
+    saveGame(this.world);
+  }
+
+  private load() {
+    const data = loadSave();
+    if (!data) return;
+    applySaveToWorld(data, this.world);
+    this.cancelPlacement();
   }
 }

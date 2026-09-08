@@ -9,11 +9,24 @@ import { findPath } from '../world/Pathfinding';
 
 const ARRIVAL_EPSILON = 2;
 const POPULATION_SPAWN_INTERVAL = 15; // seconds
+export const MAX_POPULATION = 50;
+const MIN_FOOD_SURPLUS_TO_GROW = 10;
+const FARM_PRODUCTION_INTERVAL = 10; // seconds
+const FOOD_CONSUMPTION_INTERVAL = 20; // seconds, one "day"
+const FOOD_PER_VILLAGER = 1;
+const TREE_YIELD_CAPACITY = 100;
+export const SAPLING_GROW_SECONDS = 45;
 
 let spawnTimer = 0;
+let farmProductionTimer = 0;
+let foodConsumptionTimer = 0;
 
 export function tick(dt: number, world: World) {
   advanceConstruction(dt, world);
+  advanceAging(dt, world);
+  advanceSaplings(dt, world);
+  advanceFarmProduction(dt, world);
+  advanceFoodConsumption(dt, world);
   advancePopulationGrowth(dt, world);
   for (const villager of world.villagers) {
     updateVillager(villager, dt, world);
@@ -35,11 +48,14 @@ function advanceConstruction(dt: number, world: World) {
 function claimWorkers(building: Building, villagers: Villager[]) {
   const def = BUILDING_DEFS[building.type];
   if (!def.workerSlots || !def.gatherJob) return;
+  const isFarm = def.gatherJob === 'farmer';
   for (const villager of villagers) {
     if (building.workerIds.length >= def.workerSlots) break;
     if (villager.job !== 'idle') continue;
+    if (!isFarm && villager.ageGroup === 'kid') continue;
     villager.job = def.gatherJob;
     villager.state = 'idle';
+    villager.workplaceBuildingId = isFarm ? building.id : null;
     building.workerIds.push(villager.id);
   }
 }
@@ -54,6 +70,16 @@ function getPopulationCap(buildings: Building[]): number {
   return cap;
 }
 
+function getFoodCapacity(buildings: Building[]): number {
+  let cap = 0;
+  for (const building of buildings) {
+    if (building.state !== 'active') continue;
+    const def = BUILDING_DEFS[building.type];
+    cap += def.foodCapacity ?? 0;
+  }
+  return cap;
+}
+
 function findDropoffBuilding(buildings: Building[]): Building | null {
   return buildings.find((b) => b.state === 'active' && BUILDING_DEFS[b.type].acceptsDropoff) ?? null;
 }
@@ -63,12 +89,85 @@ function advancePopulationGrowth(dt: number, world: World) {
   if (spawnTimer < POPULATION_SPAWN_INTERVAL) return;
   spawnTimer = 0;
 
-  const cap = getPopulationCap(world.buildings);
+  const cap = Math.min(getPopulationCap(world.buildings), MAX_POPULATION);
   if (world.villagers.length >= cap) return;
+  if (world.resources.get('food') < MIN_FOOD_SURPLUS_TO_GROW) return;
 
   const keep = world.buildings.find((b) => b.type === 'keep');
   if (!keep) return;
-  world.villagers.push(createVillager(keep.position));
+  world.villagers.push(createVillager(keep.position, 'kid'));
+}
+
+function advanceAging(dt: number, world: World) {
+  for (const villager of world.villagers) {
+    if (villager.ageGroup !== 'kid') continue;
+    villager.ageTimer -= dt;
+    if (villager.ageTimer <= 0) {
+      villager.ageGroup = 'adult';
+      villager.ageTimer = 0;
+    }
+  }
+}
+
+function advanceSaplings(dt: number, world: World) {
+  world.map.forEachTile((tile) => {
+    if (tile.saplingTimer <= 0) return;
+    tile.saplingTimer -= dt;
+    if (tile.saplingTimer <= 0) {
+      tile.saplingTimer = 0;
+      tile.type = 'forest';
+      tile.resourceAmount = TREE_YIELD_CAPACITY;
+    }
+  });
+}
+
+function advanceFarmProduction(dt: number, world: World) {
+  farmProductionTimer += dt;
+  if (farmProductionTimer < FARM_PRODUCTION_INTERVAL) return;
+  farmProductionTimer = 0;
+
+  const def = BUILDING_DEFS.farm;
+  let totalYield = 0;
+  for (const building of world.buildings) {
+    if (building.type !== 'farm' || building.state !== 'active') continue;
+    totalYield += building.workerIds.length * (def.foodYieldPerWorker ?? 0);
+  }
+  if (totalYield <= 0) return;
+  world.resources.addFoodCapped(totalYield, getFoodCapacity(world.buildings));
+}
+
+function advanceFoodConsumption(dt: number, world: World) {
+  foodConsumptionTimer += dt;
+  if (foodConsumptionTimer < FOOD_CONSUMPTION_INTERVAL) return;
+  foodConsumptionTimer = 0;
+
+  const needed = world.villagers.length * FOOD_PER_VILLAGER;
+  if (needed <= 0) return;
+
+  if (world.resources.canAfford({ food: needed })) {
+    world.resources.spend({ food: needed });
+    return;
+  }
+
+  const available = world.resources.get('food');
+  const shortfall = needed - available;
+  removeStarvingVillagers(world.villagers, Math.ceil(shortfall / FOOD_PER_VILLAGER));
+  world.resources.spend({ food: available });
+}
+
+function removeStarvingVillagers(villagers: Villager[], count: number) {
+  let remaining = count;
+  const removeWhere = (predicate: (v: Villager) => boolean) => {
+    for (let i = villagers.length - 1; i >= 0 && remaining > 0; i--) {
+      if (predicate(villagers[i])) {
+        villagers.splice(i, 1);
+        remaining--;
+      }
+    }
+  };
+  removeWhere((v) => v.ageGroup === 'kid');
+  removeWhere((v) => v.job === 'idle');
+  removeWhere(() => true);
 }
 
 function moveToward(villager: Villager, target: Point, dt: number): boolean {
@@ -100,6 +199,15 @@ function resourceTileTypeForJob(job: Villager['job']): 'forest' | 'stone' | null
 function updateVillager(villager: Villager, dt: number, world: World) {
   switch (villager.state) {
     case 'idle': {
+      if (villager.job === 'farmer') {
+        const workplace = villager.workplaceBuildingId
+          ? world.buildings.find((b) => b.id === villager.workplaceBuildingId)
+          : null;
+        if (!workplace) return;
+        villager.target = workplace.position;
+        villager.state = 'walkingToResource';
+        return;
+      }
       const tileType = resourceTileTypeForJob(villager.job);
       if (!tileType) return;
       const currentTile = worldToTile(villager.position.x, villager.position.y);
@@ -118,8 +226,12 @@ function updateVillager(villager: Villager, dt: number, world: World) {
       const [waypoint] = findPath(villager.position, villager.target);
       const arrived = moveToward(villager, waypoint, dt);
       if (arrived) {
-        villager.state = 'gathering';
-        villager.gatherTimer = GATHER_DURATION;
+        if (villager.job === 'farmer') {
+          villager.state = 'working';
+        } else {
+          villager.state = 'gathering';
+          villager.gatherTimer = GATHER_DURATION;
+        }
       }
       break;
     }
@@ -172,6 +284,11 @@ function updateVillager(villager: Villager, dt: number, world: World) {
         villager.target = null;
       }
       break;
+    }
+    case 'working': {
+      // Stationary production job (e.g. farmer). Production itself is
+      // accrued at the building level in advanceFarmProduction.
+      return;
     }
   }
 }
