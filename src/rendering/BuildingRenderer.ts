@@ -8,6 +8,7 @@ const BUILDING_COLORS: Record<Building['type'], string> = {
   house: '#b08d57',
   woodcutterHut: '#5a7a3a',
   quarry: '#7a7a72',
+  farm: '#c9a227',
 };
 
 export function drawBuildings(ctx: CanvasRenderingContext2D, buildings: Building[]) {
@@ -45,12 +46,18 @@ export function drawBuildings(ctx: CanvasRenderingContext2D, buildings: Building
 }
 
 export function drawPlacementGhost(ctx: CanvasRenderingContext2D, uiState: UIState) {
-  if (!uiState.placingBuildingType || !uiState.hoverTile) return;
-  const def = BUILDING_DEFS[uiState.placingBuildingType];
+  if (!uiState.hoverTile) return;
+  if (!uiState.placingBuildingType && !uiState.plantingTree) return;
+
+  let w = TILE_SIZE;
+  let h = TILE_SIZE;
+  if (uiState.placingBuildingType) {
+    const def = BUILDING_DEFS[uiState.placingBuildingType];
+    w = def.footprint.w * TILE_SIZE;
+    h = def.footprint.h * TILE_SIZE;
+  }
   const px = uiState.hoverTile.x * TILE_SIZE;
   const py = uiState.hoverTile.y * TILE_SIZE;
-  const w = def.footprint.w * TILE_SIZE;
-  const h = def.footprint.h * TILE_SIZE;
 
   ctx.fillStyle = uiState.ghostValid ? 'rgba(80,200,80,0.4)' : 'rgba(200,60,60,0.4)';
   ctx.fillRect(px, py, w, h);

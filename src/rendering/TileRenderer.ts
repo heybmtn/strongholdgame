@@ -2,6 +2,7 @@ import type { GameMap } from '../world/Map';
 import { TILE_SIZE } from '../world/Map';
 import type { Camera } from '../game/Camera';
 import type { TileType } from '../world/Tile';
+import { SAPLING_GROW_SECONDS } from '../simulation/Simulation';
 
 const TILE_COLORS: Record<TileType, string> = {
   grass: '#3a6b35',
@@ -32,6 +33,15 @@ export function drawTiles(ctx: CanvasRenderingContext2D, map: GameMap, camera: C
         ctx.fillStyle = '#9a9a90';
         const s = TILE_SIZE * 0.4;
         ctx.fillRect(px + (TILE_SIZE - s) / 2, py + (TILE_SIZE - s) / 2, s, s);
+      }
+
+      if (tile.saplingTimer > 0) {
+        const progress = 1 - tile.saplingTimer / SAPLING_GROW_SECONDS;
+        const radius = TILE_SIZE * (0.08 + 0.2 * progress);
+        ctx.fillStyle = '#5fae4a';
+        ctx.beginPath();
+        ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, radius, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   }

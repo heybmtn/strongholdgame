@@ -28,7 +28,7 @@ export class GameMap {
   constructor(seed = 1) {
     this.tiles = new Array(this.width * this.height);
     for (let i = 0; i < this.tiles.length; i++) {
-      this.tiles[i] = { type: 'grass', resourceAmount: 0, buildingId: null };
+      this.tiles[i] = { type: 'grass', resourceAmount: 0, buildingId: null, saplingTimer: 0 };
     }
     this.generate(seed);
   }
@@ -75,6 +75,35 @@ export class GameMap {
         if (tile) tile.buildingId = buildingId;
       }
     }
+  }
+
+  isPlantable(x: number, y: number): boolean {
+    const tile = this.getTile(x, y);
+    if (!tile) return false;
+    return tile.type === 'grass' && tile.buildingId === null && tile.saplingTimer === 0;
+  }
+
+  plantTree(x: number, y: number, growSeconds: number): boolean {
+    if (!this.isPlantable(x, y)) return false;
+    const tile = this.getTile(x, y)!;
+    tile.saplingTimer = growSeconds;
+    return true;
+  }
+
+  forEachTile(fn: (tile: Tile, x: number, y: number) => void) {
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        fn(this.tiles[this.index(x, y)], x, y);
+      }
+    }
+  }
+
+  getTilesSnapshot(): Tile[] {
+    return this.tiles.map((tile) => ({ ...tile }));
+  }
+
+  loadTiles(tiles: Tile[]) {
+    this.tiles = tiles.map((tile) => ({ ...tile }));
   }
 
   private generate(seed: number) {
