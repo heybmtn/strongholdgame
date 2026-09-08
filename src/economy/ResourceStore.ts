@@ -17,7 +17,7 @@ export class ResourceStore {
   private stone: number;
   private food: number;
 
-  constructor(startingWood = 50, startingStone = 20, startingFood = 0) {
+  constructor(startingWood = 50, startingStone = 20, startingFood = 30) {
     this.wood = startingWood;
     this.stone = startingStone;
     this.food = startingFood;
